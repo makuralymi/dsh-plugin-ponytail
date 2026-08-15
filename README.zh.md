@@ -17,45 +17,25 @@
 
 ## 安装
 
-这是面向 dsh web profile 的**客户端 bundle 插件**。在 `~/.dsh/profiles/web/package.json` 里分两处添加：
+这是带 `dsh.bundle` 声明的**客户端 bundle 插件**，一条命令即可安装。有全局 `dsh` 时：
 
-**1. 作为依赖**（从本仓库安装）：
-
-```json
-{
-  "dependencies": {
-    "dsh-client-ui-ponytail": "github:makuralymi/dsh-plugin-ponytail"
-  }
-}
+```sh
+dsh plugin --profile web add github:makuralymi/dsh-plugin-ponytail
 ```
 
-本地开发则用路径链接：
+没有全局 `dsh` 时：
 
-```json
-{
-  "dependencies": {
-    "dsh-client-ui-ponytail": "link:/path/to/dsh-plugin-ponytail"
-  }
-}
+```sh
+npx @deepseek-ai/dsh plugin --profile web add github:makuralymi/dsh-plugin-ponytail
 ```
 
-**2. 加入 bundle 列表**，放在 `@deepseek-ai/dsh-web-app` 之后：
+该命令会在需要时初始化 profile，将包安装进 profile，并因插件声明了 `dsh.bundle` 而自动把它加入 `dsh.profile.bundles`；插件的 `cordis.patch.yml` 会自动插入插件行。重启 `dsh web` 并刷新页面即可。
 
-```json
-{
-  "dsh": {
-    "profile": {
-      "bundles": [
-        "@deepseek-ai/dsh-base",
-        "@deepseek-ai/dsh-web-app",
-        "dsh-client-ui-ponytail"
-      ]
-    }
-  }
-}
+本地开发可将 spec 指向本地路径：
+
+```sh
+dsh plugin --profile web add link:/path/to/dsh-plugin-ponytail
 ```
-
-然后在 profile 目录执行 `pnpm install` 并重启 `dsh web`。插件的 `cordis.patch.yml` 会自动插入插件行；浏览器半区通过 `dsh.client` 发布，由 client-modules 宿主发现。
 
 ## 使用
 

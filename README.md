@@ -22,45 +22,25 @@ A whip easter egg for the [DeepSeek Harness](https://github.com/deepseek-ai/deep
 
 ## Install
 
-This is a **client bundle plugin** for the dsh web profile. Add it to `~/.dsh/profiles/web/package.json` in two places:
+This is a **client bundle plugin** with a `dsh.bundle` declaration, so it installs with a single command. With a global `dsh`:
 
-**1. As a dependency** (install from this repository):
-
-```json
-{
-  "dependencies": {
-    "dsh-client-ui-ponytail": "github:makuralymi/dsh-plugin-ponytail"
-  }
-}
+```sh
+dsh plugin --profile web add github:makuralymi/dsh-plugin-ponytail
 ```
 
-For local development, use a path link instead:
+Without a global `dsh`:
 
-```json
-{
-  "dependencies": {
-    "dsh-client-ui-ponytail": "link:/path/to/dsh-plugin-ponytail"
-  }
-}
+```sh
+npx @deepseek-ai/dsh plugin --profile web add github:makuralymi/dsh-plugin-ponytail
 ```
 
-**2. In the bundle list**, after `@deepseek-ai/dsh-web-app`:
+The command initializes the profile if needed, installs the package into the profile, auto-appends it to `dsh.profile.bundles` (because it declares `dsh.bundle`), and its `cordis.patch.yml` inserts the plugin row. Restart `dsh web` and refresh the page.
 
-```json
-{
-  "dsh": {
-    "profile": {
-      "bundles": [
-        "@deepseek-ai/dsh-base",
-        "@deepseek-ai/dsh-web-app",
-        "dsh-client-ui-ponytail"
-      ]
-    }
-  }
-}
+For local development, point the spec at a local path:
+
+```sh
+dsh plugin --profile web add link:/path/to/dsh-plugin-ponytail
 ```
-
-Then run `pnpm install` in the profile directory and restart `dsh web`. The plugin's `cordis.patch.yml` inserts its row automatically; the browser half ships through `dsh.client` and is discovered by the client-modules host.
 
 ## Usage
 
