@@ -2,8 +2,9 @@
  * Ponytail whip dock: a composer-dock toggle plus (while armed) a full-viewport
  * canvas overlay drawing a cursor-following rope whip. Clicking the
  * conversation transcript cracks the whip — the flick wave travels to the tip,
- * a synthesized crack plays, sparks spawn, and a hurry-up message is sent
- * through the session input machine. Pure easter egg: all state is
+ * a synthesized crack plays, sparks spawn, a hurry-up message is sent
+ * through the session input machine, and the DeepSeek Pet is notified via the
+ * `deepseek-pet:whip` event. Pure easter egg: all state is
  * component-local, the overlay is a body portal, and no cordis service exists.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -11,6 +12,7 @@ import { createPortal } from 'react-dom'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { nextHurry } from './hurry.ts'
 import { playCrack } from './crack.ts'
+import { triggerPetWhip } from './pet.ts'
 import { WhipSimulation } from './whipPhysics.ts'
 import css from './WhipDock.module.css'
 
@@ -50,7 +52,8 @@ function whipColor(t: number): string {
 }
 
 /**
- * Spawn sparks at the tip, play the crack, and send the next hurry-up line.
+ * Spawn sparks at the tip, play the crack, notify the DeepSeek Pet, and send
+ * the next hurry-up line.
  * @param sim - live simulation (tip position source).
  * @param sparks - in-place spark pool.
  * @param now - frame timestamp for spark birth.
@@ -80,6 +83,7 @@ function fireCrack(
     })
   }
   playCrack()
+  triggerPetWhip()
   const line = nextHurry(lastHurryRef.current)
   lastHurryRef.current = line
   inputActions.setDraft(line)

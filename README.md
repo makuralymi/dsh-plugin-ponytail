@@ -19,6 +19,7 @@ A whip easter egg for the [DeepSeek Harness](https://github.com/deepseek-ai/deep
 - While armed, the OS cursor is replaced by a whip that follows the pointer: a rigid handle fixed at 135° (up-left), a tapering body that softens toward the tip, and a tail that droops under gravity.
 - Clicking the transcript cracks the whip and sends one of several hurry-up lines as an ordinary message.
 - Crack audio plays a random MP3 from the plugin's own `public/` directory (`whip1..4.mp3`), served by the client plugin host — no dependency on the web app's own assets.
+- Every crack also broadcasts a `deepseek-pet:whip` event; the DeepSeek Pet plugin listens and randomly shows one of its own poses (`defense.png` / `frightened.png` / `giggle.png`) with the matching bubble line. The selection and presentation logic live in the deepseek-pet plugin.
 
 ## Install
 

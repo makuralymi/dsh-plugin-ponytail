@@ -8,7 +8,7 @@
  */
 
 /** This plugin's module-table id (also its /plugins/<id>/public/ base). */
-const PLUGIN_ID = '@deepseek-ai/dsh-client-ui-ponytail'
+const PLUGIN_ID = 'dsh-client-ui-ponytail'
 
 /** Sound files, relative to the plugin's public/ directory. */
 const WHIP_FILES: readonly string[] = ['whip1.mp3', 'whip2.mp3', 'whip3.mp3', 'whip4.mp3']

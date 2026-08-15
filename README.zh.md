@@ -14,6 +14,12 @@
 - 开启后，系统光标被一根鞭子取代：手柄固定在 135°（左上方向），身体由根部的硬杆渐变到尾部的软鞭，尾部受重力下垂。
 - 在对话区（而非输入框）点击，鞭子抽响，并通过输入机发送一条催促消息（多套文案轮换，不连续重复）。
 - 爆裂声随机播放插件自身 `public/` 目录下的 MP3（`whip1..4.mp3`），由客户端插件宿主提供，不依赖 Web 应用自身资源。
+- 每次抽鞭还会广播 `deepseek-pet:whip` 事件；DeepSeek Pet 插件监听后随机展示自身 `public/` 下的 `defense.png` / `frightened.png` / `giggle.png`，气泡分别显示「抱头蹲防！！！」/「卧槽，用户怒了」/「打不着，嘿嘿❤️」。随机选择与响应逻辑都在 deepseek-pet 插件内。
+
+另外我们还有热血沸腾的组合技：[deepseek-pet大肥鱼桌宠](https://github.com/keleus/deepseek-pet.git),这样你就可以拿鞭子抽了。
+## 截图
+
+![dsh-plugin-ponytail](SC2.png)
 
 ## 安装
 

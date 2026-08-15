@@ -15,6 +15,7 @@ import { WhipDock } from './WhipDock.tsx'
 export { WhipDock } from './WhipDock.tsx'
 export type { WhipDockProps } from './WhipDock.tsx'
 export { HURRIES, nextHurry } from './hurry.ts'
+export { PET_WHIP_EVENT, triggerPetWhip } from './pet.ts'
 export { WhipSimulation } from './whipPhysics.ts'
 export type { WhipCrack, WhipOptions, WhipPoint } from './whipPhysics.ts'
 
