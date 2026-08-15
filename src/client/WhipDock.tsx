@@ -10,14 +10,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { nextHurry } from './hurry.ts'
 import { playCrack } from './crack.ts'
 import { triggerPetWhip } from './pet.ts'
 import { WhipSimulation } from './whipPhysics.ts'
 import css from './WhipDock.module.css'
 
-/** Full dock-entry props: InputZone owner share plus the session standard kit. */
-export type WhipDockProps = PropsRuntime<'conversation.composer.dock'>
+/** Slot inject face supplied by the plugin apply (settings-backed prompt picker). */
+export interface WhipDockInjected {
+  /**
+   * Pick the next hurry-up line. Returns '' when the user disabled/deleted
+   * every prompt — the crack still plays, but nothing is sent to the model.
+   */
+  pickPrompt: (previous: string | undefined) => string
+}
+
+/** Full dock-entry props: owner share + session kit + the registrant inject face. */
+export type WhipDockProps = PropsRuntime<'conversation.composer.dock'> & WhipDockInjected
 
 /** Tip speed (px/s) above which a pending crack counts as snapped. */
 const CRACK_SPEED = 320
@@ -59,6 +67,7 @@ function whipColor(t: number): string {
  * @param now - frame timestamp for spark birth.
  * @param inputActions - session input write path (setDraft + submit).
  * @param lastHurryRef - rotation memory (never repeats the previous line).
+ * @param pickPrompt - settings-backed prompt picker; '' skips sending.
  */
 function fireCrack(
   sim: WhipSimulation,
@@ -66,6 +75,7 @@ function fireCrack(
   now: number,
   inputActions: WhipDockProps['inputActions'],
   lastHurryRef: { current: string | undefined },
+  pickPrompt: WhipDockInjected['pickPrompt'],
 ): void {
   const rope = sim.rope()
   const tip = rope[rope.length - 1]
@@ -84,7 +94,10 @@ function fireCrack(
   }
   playCrack()
   triggerPetWhip()
-  const line = nextHurry(lastHurryRef.current)
+  const line = pickPrompt(lastHurryRef.current)
+  // Empty pool = the user turned every prompt off: keep the crack visual/audio
+  // effect but send nothing instead of resurrecting the built-in lines.
+  if (line === '') return
   lastHurryRef.current = line
   inputActions.setDraft(line)
   inputActions.submit()
@@ -180,6 +193,7 @@ function draw(canvas: HTMLCanvasElement | null, sim: WhipSimulation, sparks: Spa
 
 interface WhipOverlayProps {
   inputActions: WhipDockProps['inputActions']
+  pickPrompt: WhipDockInjected['pickPrompt']
   onDisarm: () => void
 }
 
@@ -187,7 +201,7 @@ interface WhipOverlayProps {
  * Body-portal overlay: binds the global pointer/keyboard listeners, runs the
  * rAF loop, and owns the cursor: none swap for the armed lifetime.
  */
-function WhipOverlay({ inputActions, onDisarm }: WhipOverlayProps) {
+function WhipOverlay({ inputActions, pickPrompt, onDisarm }: WhipOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const lastHurryRef = useRef<string | undefined>(undefined)
 
@@ -232,7 +246,7 @@ function WhipOverlay({ inputActions, onDisarm }: WhipOverlayProps) {
       sim.step(dt)
       if (pendingCrack && (sim.tipSpeed > CRACK_SPEED || now > pendingDeadline)) {
         pendingCrack = false
-        fireCrack(sim, sparks, now, inputActions, lastHurryRef)
+        fireCrack(sim, sparks, now, inputActions, lastHurryRef, pickPrompt)
       }
       draw(canvasRef.current, sim, sparks, now)
       raf = requestAnimationFrame(frame)
@@ -246,7 +260,7 @@ function WhipOverlay({ inputActions, onDisarm }: WhipOverlayProps) {
       window.removeEventListener('keydown', onKey)
       document.body.style.cursor = previousCursor
     }
-  }, [inputActions, onDisarm])
+  }, [inputActions, pickPrompt, onDisarm])
 
   return createPortal(
     <canvas ref={canvasRef} className={css.overlay} aria-hidden="true" />,
@@ -256,7 +270,7 @@ function WhipOverlay({ inputActions, onDisarm }: WhipOverlayProps) {
 
 /** The dock toggle: a small pill that arms/disarms the whip. */
 export function WhipDock(props: WhipDockProps) {
-  const { inputActions } = props
+  const { inputActions, pickPrompt } = props
   const [armed, setArmed] = useState(false)
   const toggle = useCallback(() => { setArmed(prev => !prev) }, [])
 
@@ -273,7 +287,7 @@ export function WhipDock(props: WhipDockProps) {
         <span aria-hidden="true">🪢</span>
         <span>{armed ? '鞭子就绪' : '鞭子'}</span>
       </button>
-      {armed && <WhipOverlay inputActions={inputActions} onDisarm={toggle} />}
+      {armed && <WhipOverlay inputActions={inputActions} pickPrompt={pickPrompt} onDisarm={toggle} />}
     </div>
   )
 }

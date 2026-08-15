@@ -1,7 +1,7 @@
 {
   "name": "dsh-client-ui-ponytail",
-  "description": "Ponytail whip easter egg for the DeepSeek Harness web GUI: a composer-dock toggle that arms a cursor-following rope whip; clicking the transcript cracks it and sends a hurry-up message",
-  "version": "0.1.0",
+  "description": "Ponytail whip easter egg for the DeepSeek Harness web GUI: a composer-dock toggle that arms a cursor-following rope whip; clicking the transcript cracks it and sends an editable, grouped hurry-up message",
+  "version": "0.2.0",
   "publishConfig": {
     "access": "public"
   },
@@ -27,9 +27,27 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-general",
         "@deepseek-ai/dsh-client-ui-conversation"
       ]
     }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-settings-general": "^0.1.0-rc.6",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "files": [
     "cordis.patch.yml",

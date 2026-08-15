@@ -13,6 +13,7 @@
 - 在 `conversation.composer.dock` 区域（composer 卡片下方）新增 `🪢 鞭子` 按钮。
 - 开启后，系统光标被一根鞭子取代：手柄固定在 135°（左上方向），身体由根部的硬杆渐变到尾部的软鞭，尾部受重力下垂。
 - 在对话区（而非输入框）点击，鞭子抽响，并通过输入机发送一条催促消息（多套文案轮换，不连续重复）。
+- 在 dsh 设置面板侧栏新增 `Ponytail（鞭子）` 页面：提示词按**分组**管理，支持新建/重命名/启用停用/删除分组，组内支持添加、编辑、删除提示词，并可把提示词移动到其他分组；所有修改实时生效并持久化到用户设置。停用或删光所有提示词后，抽鞭只保留动画和音效，不再发送消息。
 - 爆裂声随机播放插件自身 `public/` 目录下的 MP3（`whip1..4.mp3`），由客户端插件宿主提供，不依赖 Web 应用自身资源。
 - 每次抽鞭还会广播 `deepseek-pet:whip` 事件；DeepSeek Pet 插件监听后随机展示自身 `public/` 下的 `defense.png` / `frightened.png` / `giggle.png`，气泡分别显示「抱头蹲防！！！」/「卧槽，用户怒了」/「打不着，嘿嘿❤️」。随机选择与响应逻辑都在 deepseek-pet 插件内。
 
@@ -47,6 +48,8 @@ dsh plugin --profile web add link:/path/to/dsh-plugin-ponytail
 
 重启 GUI 并刷新页面。点击 composer 下方的 `🪢 鞭子` 打开鞭子模式，然后在对话区任意位置点击抽鞭。按 `Esc` 或再次点击开关即可关闭。
 
+打开设置面板，在侧栏选择 `Ponytail（鞭子）`，即可增删改抽鞭时发送给模型的提示词：每个提示词归属于一个分组，抽鞭时从所有启用分组的非空提示词中随机选取一条（不会连续重复）。修改立即生效，重启后仍然保留。
+
 ## 从源码构建
 
 该插件在 DeepSeek Harness 工作区内构建（依赖共享的 tsdown 客户端 bundle 预设）：
@@ -60,8 +63,9 @@ pnpm --filter dsh-client-ui-ponytail bundle
 
 ## 目录结构
 
-- `src/client/` — 浏览器半区（dock 条目、鞭子物理、爆裂声、催促文案）。
-- `src/index.ts` — Node 半区（空 `apply`，纯 UI 插件）。
+- `src/client/` — 浏览器半区（dock 条目、鞭子物理、爆裂声、可配置催促文案与设置页面）。
+- `src/ponytail-settings.ts` — 两半区共享的分组提示词模型、默认值与选择/校验逻辑。
+- `src/index.ts` — Node 半区：注册 `dsh-client-ui-ponytail` 设置命名空间（持久化分组提示词）。
 - `public/` — 爆裂声文件（`whip1..4.mp3`），由 `/plugins/<id>/public/` 提供。
 - `cordis.patch.yml` — 将插件行插入 web profile。
 

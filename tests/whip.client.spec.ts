@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { HURRIES, nextHurry } from '../src/client/hurry.ts'
 import { WhipSimulation } from '../src/client/whipPhysics.ts'
+import {
+  clonePonytailSettings, collectPromptTexts, DEFAULT_PONYTAIL_SETTINGS,
+  nextPromptFromSettings, parsePonytailSettings,
+} from '../src/ponytail-settings.ts'
+import type { PonytailSettings } from '../src/ponytail-settings.ts'
 
 describe('WhipSimulation', () => {
   it('seeds a straight rope hanging below the head', () => {
@@ -36,5 +41,50 @@ describe('nextHurry', () => {
       expect(line).not.toBe(previous)
       previous = line
     }
+  })
+})
+
+describe('ponytail settings prompt pool', () => {
+  it('ships the original hurry lines in one enabled default group', () => {
+    expect(collectPromptTexts(DEFAULT_PONYTAIL_SETTINGS)).toEqual([...HURRIES])
+  })
+
+  it('collects only non-empty prompts from enabled groups', () => {
+    const settings: PonytailSettings = {
+      groups: [
+        { id: 'a', name: 'A', enabled: true, prompts: [
+          { id: 'a1', text: '  hello  ' },
+          { id: 'a2', text: '   ' },
+        ] },
+        { id: 'b', name: 'B', enabled: false, prompts: [{ id: 'b1', text: 'hidden' }] },
+      ],
+    }
+    expect(collectPromptTexts(settings)).toEqual(['hello'])
+  })
+
+  it('never repeats the previous line and returns "" for an empty pool', () => {
+    const settings = clonePonytailSettings(DEFAULT_PONYTAIL_SETTINGS)
+    let previous: string | undefined
+    for (let i = 0; i < 40; i += 1) {
+      const line = nextPromptFromSettings(settings, previous)
+      expect(collectPromptTexts(settings)).toContain(line)
+      expect(line).not.toBe(previous)
+      previous = line
+    }
+    expect(nextPromptFromSettings({ groups: [] }, previous)).toBe('')
+  })
+
+  it('rejects malformed wire sections', () => {
+    expect(parsePonytailSettings(null)).toBeUndefined()
+    expect(parsePonytailSettings({ groups: 'nope' })).toBeUndefined()
+    expect(parsePonytailSettings({ groups: [{ id: '', name: 'x', enabled: true, prompts: [] }] })).toBeUndefined()
+    expect(parsePonytailSettings({ groups: [{ id: 'x', name: 'x', enabled: true, prompts: [{ id: 'p', text: 'hi' }] }] })).toEqual({
+      groups: [{ id: 'x', name: 'x', enabled: true, prompts: [{ id: 'p', text: 'hi' }] }],
+    })
+  })
+
+  it('treats a missing enabled flag as enabled', () => {
+    const parsed = parsePonytailSettings({ groups: [{ id: 'x', name: 'x', prompts: [] }] })
+    expect(parsed?.groups[0]?.enabled).toBe(true)
   })
 })
