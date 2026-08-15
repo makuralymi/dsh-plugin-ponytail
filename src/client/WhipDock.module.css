@@ -1,0 +1,45 @@
+.dock {
+  display: flex;
+  justify-content: flex-end;
+  padding: 2px 4px;
+  user-select: none;
+}
+
+.button,
+.buttonArmed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(140, 140, 140, 0.45);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.button:hover {
+  background: rgba(140, 140, 140, 0.12);
+}
+
+.buttonArmed {
+  border-color: #d97706;
+  color: #d97706;
+  background: rgba(180, 83, 9, 0.18);
+}
+
+.buttonArmed:hover {
+  background: rgba(180, 83, 9, 0.28);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 2147483000;
+}

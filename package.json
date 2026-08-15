@@ -1,0 +1,40 @@
+{
+  "name": "dsh-client-ui-ponytail",
+  "description": "Ponytail whip easter egg for the DeepSeek Harness web GUI: a composer-dock toggle that arms a cursor-following rope whip; clicking the transcript cracks it and sends a hurry-up message",
+  "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makuralymi/dsh-plugin-ponytail.git"
+  },
+  "homepage": "https://github.com/makuralymi/dsh-plugin-ponytail",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "files": [
+    "cordis.patch.yml",
+    "lib/index.js",
+    "lib/client.js",
+    "public/*.mp3"
+  ]
+}
