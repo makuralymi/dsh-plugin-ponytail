@@ -4,6 +4,15 @@ English | [中文](README.zh.md)
 
 A whip easter egg for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) web GUI, inspired by the Claude Code "ponytail" whip. A small toggle in the composer dock arms a cursor-following rope whip; clicking the conversation transcript cracks it — a rigid-handle verlet whip with a gravity-drooped tail, a random whip-crack sound, and sparks — and sends a hurry-up message to the model.
 
+## Screenshot
+
+![dsh-plugin-ponytail](SC.png)
+
+## Features
+## Screenshot
+
+![dsh-plugin-ponytail](SC.png)
+
 ## Features
 
 - A `🪢 鞭子` pill in the `conversation.composer.dock` strip, under the composer card.

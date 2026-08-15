@@ -4,6 +4,10 @@
 
 面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web 界面的鞭子彩蛋插件，灵感来自 Claude Code 的 "ponytail" 小鞭子。在输入框底部的 composer dock 里放一个开关按钮，点击后鼠标变成一根跟随指针的鞭子；在对话输出区点击时，鞭子按物理效果抽动（带刚性杆子、重力下垂尾部的 verlet 物理 + 随机爆裂声 + 火花），并给模型发送一条催促加快工作的消息。
 
+## 截图
+
+![dsh-plugin-ponytail](SC.png)
+
 ## 功能
 
 - 在 `conversation.composer.dock` 区域（composer 卡片下方）新增 `🪢 鞭子` 按钮。
