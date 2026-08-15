@@ -9,6 +9,7 @@
  * settings scope under the plugin's own namespace.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the ui-conversation SlotMap + SessionStandardProps merge
 // (the 'conversation.composer.dock' seat and the inputActions standard kit).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -35,12 +36,35 @@ export type { PonytailSettingsSectionInjected, PonytailSettingsSectionProps } fr
 export { PonytailSettingsController } from './settings-controller.ts'
 export type { PonytailSettingsSnapshot } from './settings-controller.ts'
 
+/** Narrow structural face of the scoped conversation service's cancel verb. */
+interface SessionCancelFace {
+  cancel: () => Promise<void>
+}
+
+/**
+ * Resolve the addressed session's turn cancellation from the sessions scope.
+ * Missing scope/service and cancel failures are swallowed: the caller then
+ * falls back to the ordinary busy-Enter policy.
+ */
+function cancelTurnOf(ctx: ClientContext, sessionId: SessionId): () => Promise<void> {
+  return async () => {
+    const scoped = ctx.sessions.scope(sessionId)
+    const face = scoped?.get('conversation') as SessionCancelFace | undefined
+    if (face === undefined) return
+    try {
+      await face.cancel()
+    } catch {
+      // Idle turn, transport race, or unavailable service: submit still runs.
+    }
+  }
+}
+
 /**
  * Services required before either registration can run. The target slots are
  * declared by ui-conversation / ui-settings-general; `connection`, `remote`,
  * and `settingsScope` arrive through the packages listed in dsh.client.inject.
  */
-export const inject = ['slots', 'connection', 'remote', 'settingsScope']
+export const inject = ['slots', 'connection', 'remote', 'settingsScope', 'sessions']
 
 /**
  * Client plugin body: register the whip toggle into the composer dock and the
@@ -60,8 +84,10 @@ export function apply(ctx: ClientContext): void {
     name: 'conversation.composer.dock',
     id: 'ponytail',
     order: 20,
-    inject: (): WhipDockInjected => ({
+    inject: (sessionId: SessionId): WhipDockInjected => ({
       pickPrompt: previous => controller.nextPrompt(previous),
+      shouldInterrupt: () => controller.getSnapshot().settings.interrupt,
+      cancelTurn: cancelTurnOf(ctx, sessionId),
     }),
   }, WhipDock))
 

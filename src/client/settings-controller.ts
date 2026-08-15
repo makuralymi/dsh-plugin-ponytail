@@ -79,6 +79,13 @@ export class PonytailSettingsController {
     return nextPromptFromSettings(this.snapshot.settings, previous)
   }
 
+  // ── behavior switch ──────────────────────────────────────────────────────
+
+  /** Toggle cancel-current-turn-before-send. */
+  setInterrupt(enabled: boolean): void {
+    this.commit({ ...this.snapshot.settings, interrupt: enabled })
+  }
+
   // ── group edits ──────────────────────────────────────────────────────────
 
   /** Add one group and return its new id. */
@@ -90,35 +97,27 @@ export class PonytailSettingsController {
       enabled: true,
       prompts: [],
     }
-    this.commit({
-      groups: [...this.snapshot.settings.groups, group],
-    })
+    this.commit(this.withGroups([...this.snapshot.settings.groups, group]))
     return group.id
   }
 
   /** Rename a group; blank names fall back to a placeholder. */
   renameGroup(groupId: string, name: string): void {
-    this.commit({
-      groups: this.snapshot.settings.groups.map(group => group.id === groupId
-        ? { ...group, name: name.trim() === '' ? '未命名分组' : name.trim() }
-        : group),
-    })
+    this.commit(this.withGroups(this.snapshot.settings.groups.map(group => group.id === groupId
+      ? { ...group, name: name.trim() === '' ? '未命名分组' : name.trim() }
+      : group)))
   }
 
   /** Enable/disable one group in the whip-crack rotation. */
   setGroupEnabled(groupId: string, enabled: boolean): void {
-    this.commit({
-      groups: this.snapshot.settings.groups.map(group => group.id === groupId
-        ? { ...group, enabled }
-        : group),
-    })
+    this.commit(this.withGroups(this.snapshot.settings.groups.map(group => group.id === groupId
+      ? { ...group, enabled }
+      : group)))
   }
 
   /** Delete a group and every prompt inside it. */
   deleteGroup(groupId: string): void {
-    this.commit({
-      groups: this.snapshot.settings.groups.filter(group => group.id !== groupId),
-    })
+    this.commit(this.withGroups(this.snapshot.settings.groups.filter(group => group.id !== groupId)))
   }
 
   // ── prompt edits ─────────────────────────────────────────────────────────
@@ -127,32 +126,26 @@ export class PonytailSettingsController {
   addPrompt(groupId: string, text: string): void {
     const settings = this.snapshot.settings
     if (!settings.groups.some(group => group.id === groupId)) return
-    this.commit({
-      groups: settings.groups.map(group => group.id === groupId
-        ? { ...group, prompts: [...group.prompts, { id: newPonytailId('prompt'), text }] }
-        : group),
-    })
+    this.commit(this.withGroups(settings.groups.map(group => group.id === groupId
+      ? { ...group, prompts: [...group.prompts, { id: newPonytailId('prompt'), text }] }
+      : group)))
   }
 
   /** Replace one prompt's text. */
   updatePrompt(groupId: string, promptId: string, text: string): void {
-    this.commit({
-      groups: this.snapshot.settings.groups.map(group => group.id === groupId
-        ? {
-          ...group,
-          prompts: group.prompts.map(prompt => prompt.id === promptId ? { ...prompt, text } : prompt),
-        }
-        : group),
-    })
+    this.commit(this.withGroups(this.snapshot.settings.groups.map(group => group.id === groupId
+      ? {
+        ...group,
+        prompts: group.prompts.map(prompt => prompt.id === promptId ? { ...prompt, text } : prompt),
+      }
+      : group)))
   }
 
   /** Delete one prompt. */
   deletePrompt(groupId: string, promptId: string): void {
-    this.commit({
-      groups: this.snapshot.settings.groups.map(group => group.id === groupId
-        ? { ...group, prompts: group.prompts.filter(prompt => prompt.id !== promptId) }
-        : group),
-    })
+    this.commit(this.withGroups(this.snapshot.settings.groups.map(group => group.id === groupId
+      ? { ...group, prompts: group.prompts.filter(prompt => prompt.id !== promptId) }
+      : group)))
   }
 
   /** Move one prompt into another group (also its "分组" reassignment). */
@@ -163,17 +156,15 @@ export class PonytailSettingsController {
     const prompt = from?.prompts.find(candidate => candidate.id === promptId)
     if (from === undefined || prompt === undefined) return
     if (!groups.some(group => group.id === toGroupId)) return
-    this.commit({
-      groups: groups.map(group => {
-        if (group.id === fromGroupId) {
-          return { ...group, prompts: group.prompts.filter(candidate => candidate.id !== promptId) }
-        }
-        if (group.id === toGroupId) {
-          return { ...group, prompts: [...group.prompts, { ...prompt }] }
-        }
-        return group
-      }),
-    })
+    this.commit(this.withGroups(groups.map(group => {
+      if (group.id === fromGroupId) {
+        return { ...group, prompts: group.prompts.filter(candidate => candidate.id !== promptId) }
+      }
+      if (group.id === toGroupId) {
+        return { ...group, prompts: [...group.prompts, { ...prompt }] }
+      }
+      return group
+    })))
   }
 
   // ── persistence ──────────────────────────────────────────────────────────
@@ -207,6 +198,11 @@ export class PonytailSettingsController {
       settings,
       writable: host.status === 'ready' && host.writable,
     })
+  }
+
+  /** Build the next section from replacement groups, keeping the behavior switch. */
+  private withGroups(groups: PonytailGroup[]): PonytailSettings {
+    return { groups, interrupt: this.snapshot.settings.interrupt }
   }
 
   /**

@@ -129,6 +129,22 @@ export function PonytailSettingsSection({ controller }: PonytailSettingsSectionP
         </div>
       </div>
 
+      <label className={css.behaviorSwitch}>
+        <input
+          type="checkbox"
+          className={css.behaviorCheckbox}
+          checked={settings.interrupt}
+          onChange={event => { controller.setInterrupt(event.target.checked) }}
+        />
+        <span className={css.behaviorCopy}>
+          <strong className={css.behaviorTitle}>终止当前任务后发送</strong>
+          <span className={css.behaviorDescription}>
+            默认关闭。开启后，模型正在工作时抽鞭会先终止当前任务，再立即把催促提示词作为新消息发送；
+            关闭时催促消息进入队列，等待当前任务处理完。
+          </span>
+        </span>
+      </label>
+
       {status === 'loading' ? <p className={css.statusLine}>正在读取设置…</p> : null}
       {!writable && status !== 'loading'
         ? <p className={css.notice}>设置存储不可写：本次修改只在当前页面内生效。</p>

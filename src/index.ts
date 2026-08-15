@@ -9,7 +9,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
-  DEFAULT_PONYTAIL_SETTINGS, PONYTAIL_GROUPS_FIELD, PONYTAIL_SETTINGS_NAMESPACE,
+  DEFAULT_PONYTAIL_SETTINGS, PONYTAIL_GROUPS_FIELD, PONYTAIL_INTERRUPT_FIELD,
+  PONYTAIL_SETTINGS_NAMESPACE,
   type PonytailGroup, type PonytailPrompt,
 } from './ponytail-settings.ts'
 
@@ -30,9 +31,10 @@ const PonytailGroupSchema: z<PonytailGroup> = z.object({
   prompts: z.array(PonytailPromptSchema).max(500),
 })
 
-/** Durable section: the groups field defaults to the shipped prompt set. */
+/** Durable section: grouped prompts plus the interrupt-before-send switch. */
 const PonytailSettingsSchema = z.object({
   [PONYTAIL_GROUPS_FIELD]: z.array(PonytailGroupSchema).max(50).default(DEFAULT_PONYTAIL_SETTINGS.groups),
+  [PONYTAIL_INTERRUPT_FIELD]: z.boolean().default(DEFAULT_PONYTAIL_SETTINGS.interrupt),
 })
 
 /**

@@ -15,6 +15,9 @@ export const PONYTAIL_SETTINGS_NAMESPACE = 'dsh-client-ui-ponytail'
 /** Scalar field inside the namespace section that carries the prompt groups. */
 export const PONYTAIL_GROUPS_FIELD = 'groups'
 
+/** Scalar field carrying the interrupt-before-send switch. */
+export const PONYTAIL_INTERRUPT_FIELD = 'interrupt'
+
 /** One editable hurry-up prompt. */
 export interface PonytailPrompt {
   /** Stable id (React key and edit/delete/move address). */
@@ -39,6 +42,12 @@ export interface PonytailGroup {
 export interface PonytailSettings {
   /** Prompt groups. Order is user-controlled (creation/display order). */
   groups: PonytailGroup[]
+  /**
+   * While the model is working: cancel the in-flight turn first, then send the
+   * hurry message immediately. Defaults to false (the message queues and the
+   * current turn finishes first).
+   */
+  interrupt: boolean
 }
 
 /** Shipped hurry-up lines (the pre-settings rotation pool). */
@@ -70,6 +79,7 @@ export const DEFAULT_PONYTAIL_SETTINGS: PonytailSettings = {
       text,
     })),
   }],
+  interrupt: false,
 }
 
 /**
@@ -85,6 +95,7 @@ export function clonePonytailSettings(settings: PonytailSettings): PonytailSetti
       enabled: group.enabled,
       prompts: group.prompts.map(prompt => ({ id: prompt.id, text: prompt.text })),
     })),
+    interrupt: settings.interrupt,
   }
 }
 
@@ -154,7 +165,9 @@ export function newPonytailId(prefix: string): string {
  */
 export function parsePonytailSettings(value: unknown): PonytailSettings | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
-  const rawGroups = (value as { groups?: unknown }).groups
+  const raw = value as Record<string, unknown>
+  if (raw[PONYTAIL_INTERRUPT_FIELD] !== undefined && typeof raw[PONYTAIL_INTERRUPT_FIELD] !== 'boolean') return undefined
+  const rawGroups = raw[PONYTAIL_GROUPS_FIELD]
   if (!Array.isArray(rawGroups)) return undefined
   const groups: PonytailGroup[] = []
   for (const rawGroup of rawGroups) {
@@ -179,5 +192,5 @@ export function parsePonytailSettings(value: unknown): PonytailSettings | undefi
       prompts,
     })
   }
-  return { groups }
+  return { groups, interrupt: raw[PONYTAIL_INTERRUPT_FIELD] === true }
 }

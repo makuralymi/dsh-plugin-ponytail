@@ -58,6 +58,7 @@ describe('ponytail settings prompt pool', () => {
         ] },
         { id: 'b', name: 'B', enabled: false, prompts: [{ id: 'b1', text: 'hidden' }] },
       ],
+      interrupt: false,
     }
     expect(collectPromptTexts(settings)).toEqual(['hello'])
   })
@@ -71,7 +72,7 @@ describe('ponytail settings prompt pool', () => {
       expect(line).not.toBe(previous)
       previous = line
     }
-    expect(nextPromptFromSettings({ groups: [] }, previous)).toBe('')
+    expect(nextPromptFromSettings({ groups: [], interrupt: false }, previous)).toBe('')
   })
 
   it('rejects malformed wire sections', () => {
@@ -80,11 +81,14 @@ describe('ponytail settings prompt pool', () => {
     expect(parsePonytailSettings({ groups: [{ id: '', name: 'x', enabled: true, prompts: [] }] })).toBeUndefined()
     expect(parsePonytailSettings({ groups: [{ id: 'x', name: 'x', enabled: true, prompts: [{ id: 'p', text: 'hi' }] }] })).toEqual({
       groups: [{ id: 'x', name: 'x', enabled: true, prompts: [{ id: 'p', text: 'hi' }] }],
+      interrupt: false,
     })
   })
 
-  it('treats a missing enabled flag as enabled', () => {
+  it('treats a missing enabled flag as enabled and a missing interrupt switch as off', () => {
     const parsed = parsePonytailSettings({ groups: [{ id: 'x', name: 'x', prompts: [] }] })
     expect(parsed?.groups[0]?.enabled).toBe(true)
+    expect(parsed?.interrupt).toBe(false)
+    expect(parsePonytailSettings({ groups: [], interrupt: true })?.interrupt).toBe(true)
   })
 })

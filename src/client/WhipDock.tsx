@@ -15,13 +15,23 @@ import { triggerPetWhip } from './pet.ts'
 import { WhipSimulation } from './whipPhysics.ts'
 import css from './WhipDock.module.css'
 
-/** Slot inject face supplied by the plugin apply (settings-backed prompt picker). */
+/** Slot inject face supplied by the plugin apply (settings-backed send policy). */
 export interface WhipDockInjected {
   /**
    * Pick the next hurry-up line. Returns '' when the user disabled/deleted
    * every prompt — the crack still plays, but nothing is sent to the model.
    */
   pickPrompt: (previous: string | undefined) => string
+  /**
+   * Whether the user enabled "cancel the running turn before sending"
+   * (read at crack time, so settings edits apply without re-registration).
+   */
+  shouldInterrupt: () => boolean
+  /**
+   * Cancel the addressed session's in-flight turn. Resolves even when there
+   * is nothing to cancel, so callers can always proceed to submit.
+   */
+  cancelTurn: () => Promise<void>
 }
 
 /** Full dock-entry props: owner share + session kit + the registrant inject face. */
@@ -68,6 +78,8 @@ function whipColor(t: number): string {
  * @param inputActions - session input write path (setDraft + submit).
  * @param lastHurryRef - rotation memory (never repeats the previous line).
  * @param pickPrompt - settings-backed prompt picker; '' skips sending.
+ * @param shouldInterrupt - cancel-before-send switch, read at crack time.
+ * @param cancelTurn - session turn cancellation; failures fall back to queueing.
  */
 function fireCrack(
   sim: WhipSimulation,
@@ -76,6 +88,8 @@ function fireCrack(
   inputActions: WhipDockProps['inputActions'],
   lastHurryRef: { current: string | undefined },
   pickPrompt: WhipDockInjected['pickPrompt'],
+  shouldInterrupt: WhipDockInjected['shouldInterrupt'],
+  cancelTurn: WhipDockInjected['cancelTurn'],
 ): void {
   const rope = sim.rope()
   const tip = rope[rope.length - 1]
@@ -100,7 +114,22 @@ function fireCrack(
   if (line === '') return
   lastHurryRef.current = line
   inputActions.setDraft(line)
-  inputActions.submit()
+  if (!shouldInterrupt()) {
+    // Default: the message rides the normal busy-Enter policy (queued behind
+    // the running turn).
+    inputActions.submit()
+    return
+  }
+  // Interrupt mode: stop the in-flight turn first, then submit so the hurry
+  // prompt starts immediately instead of joining the queue. Re-apply the draft
+  // right before submit so typing during the (short) cancellation wait cannot
+  // replace the hurry line. A cancellation failure (idle session, missing
+  // service, transport race) still submits — the ordinary busy policy then
+  // decides between direct send and queue.
+  void cancelTurn().catch(() => {}).finally(() => {
+    inputActions.setDraft(line)
+    inputActions.submit()
+  })
 }
 
 /** Draw sparks, dropping expired ones (mutates the pool in place). */
@@ -194,6 +223,8 @@ function draw(canvas: HTMLCanvasElement | null, sim: WhipSimulation, sparks: Spa
 interface WhipOverlayProps {
   inputActions: WhipDockProps['inputActions']
   pickPrompt: WhipDockInjected['pickPrompt']
+  shouldInterrupt: WhipDockInjected['shouldInterrupt']
+  cancelTurn: WhipDockInjected['cancelTurn']
   onDisarm: () => void
 }
 
@@ -201,7 +232,7 @@ interface WhipOverlayProps {
  * Body-portal overlay: binds the global pointer/keyboard listeners, runs the
  * rAF loop, and owns the cursor: none swap for the armed lifetime.
  */
-function WhipOverlay({ inputActions, pickPrompt, onDisarm }: WhipOverlayProps) {
+function WhipOverlay({ inputActions, pickPrompt, shouldInterrupt, cancelTurn, onDisarm }: WhipOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const lastHurryRef = useRef<string | undefined>(undefined)
 
@@ -246,7 +277,7 @@ function WhipOverlay({ inputActions, pickPrompt, onDisarm }: WhipOverlayProps) {
       sim.step(dt)
       if (pendingCrack && (sim.tipSpeed > CRACK_SPEED || now > pendingDeadline)) {
         pendingCrack = false
-        fireCrack(sim, sparks, now, inputActions, lastHurryRef, pickPrompt)
+        fireCrack(sim, sparks, now, inputActions, lastHurryRef, pickPrompt, shouldInterrupt, cancelTurn)
       }
       draw(canvasRef.current, sim, sparks, now)
       raf = requestAnimationFrame(frame)
@@ -260,7 +291,7 @@ function WhipOverlay({ inputActions, pickPrompt, onDisarm }: WhipOverlayProps) {
       window.removeEventListener('keydown', onKey)
       document.body.style.cursor = previousCursor
     }
-  }, [inputActions, pickPrompt, onDisarm])
+  }, [inputActions, pickPrompt, shouldInterrupt, cancelTurn, onDisarm])
 
   return createPortal(
     <canvas ref={canvasRef} className={css.overlay} aria-hidden="true" />,
@@ -270,7 +301,7 @@ function WhipOverlay({ inputActions, pickPrompt, onDisarm }: WhipOverlayProps) {
 
 /** The dock toggle: a small pill that arms/disarms the whip. */
 export function WhipDock(props: WhipDockProps) {
-  const { inputActions, pickPrompt } = props
+  const { inputActions, pickPrompt, shouldInterrupt, cancelTurn } = props
   const [armed, setArmed] = useState(false)
   const toggle = useCallback(() => { setArmed(prev => !prev) }, [])
 
@@ -287,7 +318,15 @@ export function WhipDock(props: WhipDockProps) {
         <span aria-hidden="true">🪢</span>
         <span>{armed ? '鞭子就绪' : '鞭子'}</span>
       </button>
-      {armed && <WhipOverlay inputActions={inputActions} pickPrompt={pickPrompt} onDisarm={toggle} />}
+      {armed && (
+        <WhipOverlay
+          inputActions={inputActions}
+          pickPrompt={pickPrompt}
+          shouldInterrupt={shouldInterrupt}
+          cancelTurn={cancelTurn}
+          onDisarm={toggle}
+        />
+      )}
     </div>
   )
 }
