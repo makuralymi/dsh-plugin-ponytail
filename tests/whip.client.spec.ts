@@ -8,27 +8,44 @@ import {
 import type { PonytailSettings } from '../src/ponytail-settings.ts'
 
 describe('WhipSimulation', () => {
-  it('seeds a straight rope hanging below the head', () => {
+  it('seeds the handle tip and a straight rope hanging from it', () => {
     const sim = new WhipSimulation({ points: 5, segmentLength: 10 })
     sim.seed(100, 100)
     const rope = sim.rope()
-    expect(rope[0]?.x).toBe(100)
-    expect(rope[0]?.y).toBe(100)
-    expect(rope[4]?.y).toBe(140)
+    // Handle tip sits at the grip plus the idle handle offset; the rope
+    // hangs straight down from it by one segment per point.
+    expect(rope[3]!.y - rope[0]!.y).toBeCloseTo(30, 5)
+    expect(rope[4]!.y - rope[3]!.y).toBeCloseTo(10, 5)
   })
 
-  it('crack flick travels the rope and finishes', () => {
-    const sim = new WhipSimulation({ points: 20, segmentLength: 8, flickAmplitude: 60, flickDuration: 0.15 })
+  it('charge → release walks the strike machine and latches struck', () => {
+    const sim = new WhipSimulation({ points: 20, segmentLength: 8 })
     sim.seed(200, 200)
-    sim.crackAt(200, 200)
-    expect(sim.crack).toBeDefined()
-    let peak = 0
-    for (let i = 0; i < 60; i += 1) {
+    expect(sim.phase).toBe('idle')
+
+    sim.charge()
+    expect(sim.phase).toBe('charge')
+    for (let i = 0; i < 30; i += 1) sim.step(1 / 60)
+    expect(sim.chargeLevel).toBeGreaterThan(0)
+
+    sim.release()
+    expect(sim.phase).toBe('strike_forward')
+
+    let struck = false
+    for (let i = 0; i < 120; i += 1) {
       sim.step(1 / 60)
-      peak = Math.max(peak, sim.tipSpeed)
+      if (sim.struck) struck = true
     }
-    expect(peak).toBeGreaterThan(0)
-    expect(sim.crack).toBeUndefined()
+    expect(struck).toBe(true)
+    expect(sim.phase).toBe('idle')
+  })
+
+  it('releasing without a charge is a no-op', () => {
+    const sim = new WhipSimulation()
+    sim.seed(0, 0)
+    sim.release()
+    expect(sim.phase).toBe('idle')
+    expect(sim.struck).toBe(false)
   })
 })
 

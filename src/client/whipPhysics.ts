@@ -1,126 +1,122 @@
 /**
- * Verlet whip simulation behind the overlay. Pure math and state: the React
- * component owns the rAF loop and the canvas; this module owns points,
- * integration (with gravity), distance constraints, a rigid-handle/bending
- * pass that keeps the root a stiff rod and the tip soft, and the crack flick.
- * No React, no DOM — the unit test exercises it in isolation.
+ * Verlet whip simulation behind the overlay, ported from the reference
+ * "真实物理鞭子" demos: a rigid handle with an animated angle drives a
+ * charge → strike_forward → strike_back state machine, and a Verlet rope
+ * (low damping, many constraint iterations) carries the snap-back wave to the
+ * tip. Pure math and state: the React component owns the rAF loop and the
+ * canvas; this module owns points, integration, constraints, the handle angle,
+ * and the strike state machine. No React, no DOM.
  */
 
-/** One whip point (position + verlet velocity memory). */
+/** One whip point (position + Verlet velocity memory via the previous frame). */
 export interface WhipPoint {
   /** Current x. */
   x: number
   /** Current y. */
   y: number
-  /** Previous-frame x (verlet velocity memory). */
+  /** Previous-frame x. */
   px: number
-  /** Previous-frame y (verlet velocity memory). */
+  /** Previous-frame y. */
   py: number
 }
 
-/** Live bookkeeping for one crack flick. */
-export interface WhipCrack {
-  /** Seconds remaining in the flick phase. */
-  remaining: number
-  /** Total flick duration in seconds. */
-  duration: number
-  /** Flick direction, unit vector (x). */
-  dirX: number
-  /** Flick direction, unit vector (y). */
-  dirY: number
-}
+/** Strike-phase state machine positions. */
+export type WhipPhase = 'idle' | 'charge' | 'strike_forward' | 'strike_back'
 
-/** Construction knobs; every field has a tuned default for a 22-point whip. */
+/** Construction knobs; defaults mirror the reference whip (30 x 8px segments). */
 export interface WhipOptions {
-  /** Number of whip points (handle points plus body/tail). */
+  /** Number of rope segments. */
   points?: number
   /** Rest length of one segment, in pixels. */
   segmentLength?: number
-  /** Number of points forming the rigid handle (including the head). */
-  handlePoints?: number
-  /** Per-frame velocity retention (1 = no damping). */
+  /** Rigid handle length, in pixels (lever arm). */
+  handleLength?: number
+  /** Per-frame velocity retention (1 = no air resistance). */
   damping?: number
-  /** Distance-constraint solve iterations per step. */
+  /** Distance-constraint iterations per step (rope stiffness). */
   iterations?: number
-  /** Body bending resistance (0 = limp, 1 = rigid), at the body root. */
-  stiffness?: number
-  /** How much the tip softens relative to the body root (0..1). */
-  tipFlex?: number
-  /** Downward gravity in pixels per second squared (tail droop). */
+  /** Gravity added per rop point per step (expressed at 60 fps). */
   gravity?: number
-  /** Crack flick amplitude, in pixels. */
-  flickAmplitude?: number
-  /** Crack flick duration, in seconds. */
-  flickDuration?: number
-  /**
-   * Fixed handle angle in radians, measured like a canvas rotation (0 = +x,
-   * increasing clockwise toward +y because screen y grows downward). The
-   * handle always lays along this direction regardless of pointer motion;
-   * the default has no fixed angle (follows the head-to-body axis).
-   */
-  handleAngle?: number
+  /** Rest handle angle in degrees (0 = +x, clockwise on screen). */
+  idleAngle?: number
+  /** Extra rearward handle lean at full charge, in degrees. */
+  chargeLean?: number
+  /** Forward swing past idle at rest strike, in degrees. */
+  strikeSwing?: number
+  /** Extra forward swing per unit of strike force, in degrees. */
+  strikeForceSwing?: number
+}
+
+/** Settled one-shot crack bookkeeping for the renderer + test. */
+export interface WhipCrack {
+  /** Force (0..1) captured at release. */
+  force: number
 }
 
 /**
- * The whip: a pinned head chases a target, the handle stays a rigid rod, the
- * body softens toward the tip (thick-and-stiff root, thin-and-soft tail), and
- * gravity droops the tail. A crack is a single fast head flick whose wave
- * travels to the tip; the caller reads {@link tipSpeed} to decide when it
- * fires.
+ * The whip. `targetX/targetY` is the grip (the cursor); `rope()[0]` is the
+ * handle tip, driven by the animated `currentAngle`. A `charge()` leans the
+ * handle back; `release()` whips it forward fast, then snaps it back — the
+ * snap-back is what throws the wave down the rope. `struck` latches once when
+ * the backward yank begins (the moment to fire audio/message).
  */
 export class WhipSimulation {
   private readonly points: WhipPoint[]
   private readonly segmentLength: number
+  private readonly handleLength: number
   private readonly damping: number
   private readonly iterations: number
-  private readonly stiffness: number
-  private readonly tipFlex: number
   private readonly gravity: number
-  private readonly flickAmplitude: number
-  private readonly flickDuration: number
+  private readonly idleAngle: number
+  private readonly chargeLean: number
+  private readonly strikeSwing: number
+  private readonly strikeForceSwing: number
 
-  /** Number of points in the rigid handle (including the head). */
-  readonly handlePoints: number
-  /** Fixed handle angle in radians (screen coords), or undefined to follow motion. */
-  readonly handleAngle: number | undefined
-
-  /** Mouse target the head chases. */
+  /** Grip position x (the cursor). */
   targetX = 0
-  /** Mouse target the head chases. */
+  /** Grip position y (the cursor). */
   targetY = 0
-  /** Live crack, or undefined while idle. */
-  crack: WhipCrack | undefined
-  /** Smoothed tip speed, in pixels per second. */
-  tipSpeed = 0
+  /** Animated handle angle in degrees (0 = +x, clockwise on screen). */
+  currentAngle: number
+  /** Live strike phase. */
+  phase: WhipPhase = 'idle'
+  /** Charge 0..1 while holding (and the force snapshot once released). */
+  chargeLevel = 0
+  /** One-shot latch: true for a single read after the snap-back yank begins. */
+  struck = false
+
+  private targetAngle: number
+  private strikeForce = 0
 
   /**
-   * @param options - optional tuning; defaults target the dock overlay's whip.
+   * @param options - optional tuning; the defaults mirror the reference whip.
    */
   constructor(options: WhipOptions = {}) {
-    const count = options.points ?? 22
-    this.handlePoints = options.handlePoints ?? 5
-    this.segmentLength = options.segmentLength ?? 9
-    this.damping = options.damping ?? 0.85
-    this.iterations = options.iterations ?? 3
-    this.stiffness = options.stiffness ?? 0.7
-    this.tipFlex = options.tipFlex ?? 0.9
-    this.gravity = options.gravity ?? 700
-    this.flickAmplitude = options.flickAmplitude ?? 46
-    this.flickDuration = options.flickDuration ?? 0.15
-    this.handleAngle = options.handleAngle
+    const count = options.points ?? 30
+    this.segmentLength = options.segmentLength ?? 8
+    this.handleLength = options.handleLength ?? 60
+    this.damping = options.damping ?? 0.98
+    this.iterations = options.iterations ?? 15
+    this.gravity = options.gravity ?? 0.5
+    this.idleAngle = options.idleAngle ?? 225
+    this.chargeLean = options.chargeLean ?? 80
+    this.strikeSwing = options.strikeSwing ?? 90
+    this.strikeForceSwing = options.strikeForceSwing ?? 60
+    this.currentAngle = this.idleAngle
+    this.targetAngle = this.idleAngle
     this.points = []
     for (let i = 0; i < count; i += 1) {
       this.points.push({ x: 0, y: 0, px: 0, py: 0 })
     }
   }
 
-  /** Read-only whip points for rendering. */
+  /** Read-only rope points for rendering (`[0]` is the handle tip). */
   rope(): readonly WhipPoint[] {
     return this.points
   }
 
   /**
-   * Read one whip point. The array is fully populated at construction and
+   * Read one rope point. The array is fully populated at construction and
    * never resized, so every in-bounds index resolves; the assertion satisfies
    * `noUncheckedIndexedAccess`.
    */
@@ -128,158 +124,125 @@ export class WhipSimulation {
     return this.points[i]!
   }
 
-  /** Bending stiffness at one point index: rigid handle, softening body. */
-  private stiffnessAt(i: number): number {
-    const n = this.points.length
-    if (i < this.handlePoints) return 1
-    const bodyPos = (i - this.handlePoints) / (n - 1 - this.handlePoints)
-    return this.stiffness * (1 - this.tipFlex * bodyPos)
-  }
-
   /**
-   * Snap the whole whip to a start position so the first mount does not let
-   * the tail fly in from the origin.
-   * @param x - head x.
-   * @param y - head y.
+   * Snap the whip to a start position: the handle tip and rope hang straight
+   * down from the grip, with everything at rest.
+   * @param x - grip x.
+   * @param y - grip y.
    */
   seed(x: number, y: number): void {
+    this.targetX = x
+    this.targetY = y
+    this.currentAngle = this.idleAngle
+    this.targetAngle = this.idleAngle
+    this.phase = 'idle'
+    this.chargeLevel = 0
+    this.strikeForce = 0
+    this.struck = false
+    const rad = this.currentAngle * Math.PI / 180
+    const tipX = x + Math.cos(rad) * this.handleLength
+    const tipY = y + Math.sin(rad) * this.handleLength
     for (let i = 0; i < this.points.length; i += 1) {
       const p = this.at(i)
-      p.x = x
-      p.y = y + i * this.segmentLength
+      p.x = tipX
+      p.y = tipY + i * this.segmentLength
       p.px = p.x
       p.py = p.y
     }
-    this.targetX = x
-    this.targetY = y
+  }
 
-    if (this.handleAngle !== undefined) {
-      const head = this.at(0)
-      const dx = Math.cos(this.handleAngle) * this.segmentLength
-      const dy = Math.sin(this.handleAngle) * this.segmentLength
-      for (let i = 1; i <= this.handlePoints; i += 1) {
-        const p = this.at(i)
-        p.x = head.x + dx * i
-        p.y = head.y + dy * i
-        p.px = p.x
-        p.py = p.y
-      }
-    }
+  /** Begin charging (pointer held down over the transcript). */
+  charge(): void {
+    if (this.phase !== 'idle') return
+    this.phase = 'charge'
+    this.chargeLevel = 0
+  }
+
+  /** Release: whip forward with the accumulated force, then snap back. */
+  release(): void {
+    if (this.phase !== 'charge') return
+    this.strikeForce = this.chargeLevel
+    this.chargeLevel = 0
+    this.phase = 'strike_forward'
   }
 
   /**
-   * Trigger a crack at a point. The head flick runs perpendicular to the
-   * whip's head tangent so the wave snaps sideways, like a real whip crack.
-   * @param mx - mouse x (also snapped into the target).
-   * @param my - mouse y (also snapped into the target).
-   */
-  crackAt(mx: number, my: number): void {
-    this.targetX = mx
-    this.targetY = my
-    const head = this.at(0)
-    const neck = this.points.length > 1 ? this.at(1) : head
-    let tx = head.x - neck.x
-    let ty = head.y - neck.y
-    const len = Math.hypot(tx, ty)
-    if (len < 1e-3) {
-      tx = 1
-      ty = 0
-    } else {
-      tx /= len
-      ty /= len
-    }
-    this.crack = {
-      remaining: this.flickDuration,
-      duration: this.flickDuration,
-      dirX: -ty,
-      dirY: tx,
-    }
-  }
-
-  /**
-   * Advance the simulation.
-   * @param dt - frame delta in seconds (clamped to 50ms for tab-switch stability).
+   * Advance the simulation one frame.
+   * @param dt - frame delta in seconds (frame-rate normalization applied).
    */
   step(dt: number): void {
-    const clamped = Math.min(dt, 0.05)
-    const dtSq = clamped * clamped
+    // Frame-rate normalization: the reference updates once per rAF frame.
+    const frameScale = Math.max(dt, 1e-3) * 60
 
-    let headX = this.targetX
-    let headY = this.targetY
-    if (this.crack !== undefined) {
-      const p = 1 - this.crack.remaining / this.crack.duration
-      const envelope = Math.sin(p * Math.PI)
-      // A single out-and-back snap, not a multi-wave thrash.
-      const wave = Math.sin(p * Math.PI * 2)
-      const amp = this.flickAmplitude * envelope * wave
-      headX += this.crack.dirX * amp
-      headY += this.crack.dirY * amp
-      this.crack.remaining -= dt
-      if (this.crack.remaining <= 0) this.crack = undefined
-    }
-
-    const head = this.at(0)
-    head.px = head.x
-    head.py = head.y
-    head.x = headX
-    head.y = headY
-
-    // Fixed handle: each handle point stays exactly its offset along
-    // handleAngle from the head, anchoring the 135° grip direction.
-    if (this.handleAngle !== undefined) {
-      const dx = Math.cos(this.handleAngle) * this.segmentLength
-      const dy = Math.sin(this.handleAngle) * this.segmentLength
-      for (let i = 1; i <= this.handlePoints; i += 1) {
-        const p = this.at(i)
-        p.px = p.x
-        p.py = p.y
-        p.x = head.x + dx * i
-        p.y = head.y + dy * i
+    if (this.phase === 'charge') {
+      this.chargeLevel = Math.min(1, this.chargeLevel + 0.03 * frameScale)
+      this.targetAngle = this.idleAngle + this.chargeLevel * this.chargeLean
+      this.currentAngle += (this.targetAngle - this.currentAngle) * 0.15
+    } else if (this.phase === 'strike_forward') {
+      this.targetAngle = this.idleAngle - this.strikeSwing - this.strikeForce * this.strikeForceSwing
+      this.currentAngle += (this.targetAngle - this.currentAngle) * 0.6
+      if (Math.abs(this.currentAngle - this.targetAngle) < 15) {
+        this.phase = 'strike_back'
+        this.struck = true
       }
+    } else if (this.phase === 'strike_back') {
+      this.targetAngle = this.idleAngle
+      this.currentAngle += (this.targetAngle - this.currentAngle) * 0.5
+      if (Math.abs(this.currentAngle - this.targetAngle) < 2) {
+        this.phase = 'idle'
+        this.strikeForce = 0
+      }
+    } else {
+      this.targetAngle = this.idleAngle
+      this.currentAngle += (this.targetAngle - this.currentAngle) * 0.1
     }
 
-    const friction = this.damping
+    // Handle tip from the animated angle.
+    const rad = this.currentAngle * Math.PI / 180
+    const tipX = this.targetX + Math.cos(rad) * this.handleLength
+    const tipY = this.targetY + Math.sin(rad) * this.handleLength
+
+    // The tip is pinned; every following point integrates with low damping.
+    const head = this.at(0)
+    head.x = tipX
+    head.y = tipY
+    head.px = tipX
+    head.py = tipY
+
     for (let i = 1; i < this.points.length; i += 1) {
       const p = this.at(i)
-      const vx = (p.x - p.px) * friction
-      const vy = (p.y - p.py) * friction
+      const vx = (p.x - p.px) * this.damping
+      const vy = (p.y - p.py) * this.damping
       p.px = p.x
       p.py = p.y
       p.x += vx
-      p.y += vy + this.gravity * dtSq
+      p.y += vy + this.gravity * frameScale
     }
 
-    // Distance constraints; the head stays pinned to its target.
+    // Distance constraints, keeping the tip anchored (index 0).
     for (let iter = 0; iter < this.iterations; iter += 1) {
-      for (let i = 1; i < this.points.length; i += 1) {
-        const a = this.at(i - 1)
-        const b = this.at(i)
+      for (let i = 0; i < this.points.length - 1; i += 1) {
+        const a = this.at(i)
+        const b = this.at(i + 1)
         const dx = b.x - a.x
         const dy = b.y - a.y
-        const dist = Math.hypot(dx, dy) || 1e-3
-        const diff = (dist - this.segmentLength) / dist
-        b.x -= dx * diff
-        b.y -= dy * diff
+        const dist = Math.hypot(dx, dy)
+        if (dist === 0) continue
+        const diff = this.segmentLength - dist
+        const percent = diff / dist / 2
+        const ox = dx * percent
+        const oy = dy * percent
+        if (i !== 0) {
+          a.x -= ox
+          a.y -= oy
+        }
+        b.x += ox
+        b.y += oy
       }
     }
-
-    // Bending resistance: pull each interior point toward its neighbours'
-    // midpoint. The handle is fully rigid (stiffness 1); the body softens
-    // toward the tip so the tail droops and cracks.
-    for (let i = 1; i < this.points.length - 1; i += 1) {
-      const p = this.at(i)
-      const prev = this.at(i - 1)
-      const next = this.at(i + 1)
-      const s = this.stiffnessAt(i)
-      const midX = (prev.x + next.x) * 0.5
-      const midY = (prev.y + next.y) * 0.5
-      p.x += (midX - p.x) * s
-      p.y += (midY - p.y) * s
-    }
-
-    const tip = this.at(this.points.length - 1)
-    const frameDt = Math.max(clamped, 1e-3)
-    const speed = Math.hypot((tip.x - tip.px) / frameDt, (tip.y - tip.py) / frameDt)
-    this.tipSpeed += (speed - this.tipSpeed) * 0.2
+    head.x = tipX
+    head.y = tipY
+    head.px = tipX
+    head.py = tipY
   }
 }

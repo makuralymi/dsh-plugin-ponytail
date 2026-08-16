@@ -1,11 +1,13 @@
 /**
  * Ponytail whip dock: a composer-dock toggle plus (while armed) a full-viewport
- * canvas overlay drawing a cursor-following rope whip. Clicking the
- * conversation transcript cracks the whip — the flick wave travels to the tip,
- * a synthesized crack plays, sparks spawn, a hurry-up message is sent
- * through the session input machine, and the DeepSeek Pet is notified via the
- * `deepseek-pet:whip` event. Pure easter egg: all state is
- * component-local, the overlay is a body portal, and no cordis service exists.
+ * canvas overlay drawing a cursor-following whip. Physics and look are ported
+ * from the reference "真实物理鞭子" demo — hold the pointer over the
+ * transcript to charge (the handle leans back), release to whip forward and
+ * snap back, and the snap-back wave travels to the tip. On the snap-back the
+ * crack audio plays, sparks spawn, the DeepSeek Pet is notified, and a
+ * hurry-up message is sent through the session input machine. Pure easter egg:
+ * all state is component-local, the overlay is a body portal, and no cordis
+ * service exists.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -37,13 +39,6 @@ export interface WhipDockInjected {
 /** Full dock-entry props: owner share + session kit + the registrant inject face. */
 export type WhipDockProps = PropsRuntime<'conversation.composer.dock'> & WhipDockInjected
 
-/** Tip speed (px/s) above which a pending crack counts as snapped. */
-const CRACK_SPEED = 320
-/** Safety window (ms): a flick that never snaps the tip fires anyway. */
-const CRACK_DEADLINE_MS = 450
-/** Fixed handle direction in radians: 135° counter-clockwise from +x (up-left, second quadrant) on the screen plane. */
-const HANDLE_ANGLE = -(Math.PI * 3) / 4
-
 /** One crack spark: position, velocity, and a fade lifetime. */
 interface Spark {
   x: number
@@ -59,14 +54,6 @@ function isTranscriptTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false
   if (target.closest('[data-conversation-scroll]') === null) return false
   return target.closest('[data-composer-seat]') === null
-}
-
-/** Interpolate the tail stroke colour from handle brown to tip tan. */
-function whipColor(t: number): string {
-  const r = Math.round(0x6b + (0xd8 - 0x6b) * t)
-  const g = Math.round(0x44 + (0xb0 - 0x44) * t)
-  const b = Math.round(0x23 + (0x7a - 0x23) * t)
-  return `rgb(${r}, ${g}, ${b})`
 }
 
 /**
@@ -153,7 +140,7 @@ function drawSparks(ctx: CanvasRenderingContext2D, sparks: Spark[], now: number)
   ctx.globalAlpha = 1
 }
 
-/** Render one frame of the whip onto the overlay canvas. */
+/** Render one frame of the whip onto the overlay canvas (reference-style). */
 function draw(canvas: HTMLCanvasElement | null, sim: WhipSimulation, sparks: Spark[], now: number): void {
   if (canvas === null) return
   const dpr = window.devicePixelRatio || 1
@@ -173,49 +160,47 @@ function draw(canvas: HTMLCanvasElement | null, sim: WhipSimulation, sparks: Spa
   const rope = sim.rope()
   const n = rope.length
   const head = rope[0]
-  const tip = rope[n - 1]
-  if (head === undefined || tip === undefined) return
+  if (head === undefined) return
+  const gripX = sim.targetX
+  const gripY = sim.targetY
 
-  const handleEnd = sim.handlePoints - 1
+  // Grip crosshair dot.
+  ctx.beginPath()
+  ctx.arc(gripX, gripY, 4, 0, Math.PI * 2)
+  ctx.fillStyle = '#333'
+  ctx.fill()
 
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-
-  // Handle: a rigid dark rod from the cursor (thick, stiff root).
-  const handleTip = rope[handleEnd]
-  if (handleTip !== undefined) {
-    ctx.strokeStyle = '#3a2412'
-    ctx.lineWidth = 8
+  // Charge ring.
+  if (sim.chargeLevel > 0) {
     ctx.beginPath()
-    ctx.moveTo(head.x, head.y)
-    ctx.lineTo(handleTip.x, handleTip.y)
+    ctx.arc(gripX, gripY, 20, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sim.chargeLevel)
+    ctx.strokeStyle = 'rgba(0, 0, 0, ' + String(sim.chargeLevel) + ')'
+    ctx.lineWidth = 2
     ctx.stroke()
   }
 
-  // Body: tapering from the handle end (thick) to the tip (thin).
-  for (let i = sim.handlePoints; i < n; i += 1) {
-    const a = rope[i - 1]!
-    const b = rope[i]!
-    const t = (i - sim.handlePoints) / (n - sim.handlePoints)
-    ctx.strokeStyle = whipColor(t)
-    ctx.lineWidth = 5 * (1 - t) + 1.2
+  // Rigid wood handle: from the grip to the handle tip (rope[0]).
+  ctx.beginPath()
+  ctx.moveTo(gripX, gripY)
+  ctx.lineTo(head.x, head.y)
+  ctx.strokeStyle = '#5a3d2b'
+  ctx.lineCap = 'round'
+  ctx.lineWidth = 7
+  ctx.stroke()
+
+  // Dark leather whip body: tapers from root to tail.
+  ctx.strokeStyle = '#222'
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+  for (let i = 0; i < n - 1; i += 1) {
+    const a = rope[i]!
+    const b = rope[i + 1]!
     ctx.beginPath()
     ctx.moveTo(a.x, a.y)
     ctx.lineTo(b.x, b.y)
+    ctx.lineWidth = Math.max(1, 6 * (1 - i / n))
     ctx.stroke()
   }
-
-  // Grip knob at the cursor (where the hand holds the handle).
-  ctx.fillStyle = '#2b1a0d'
-  ctx.beginPath()
-  ctx.arc(head.x, head.y, 5, 0, Math.PI * 2)
-  ctx.fill()
-
-  // Cracker tip knot.
-  ctx.fillStyle = '#e8c39a'
-  ctx.beginPath()
-  ctx.arc(tip.x, tip.y, 3, 0, Math.PI * 2)
-  ctx.fill()
 
   drawSparks(ctx, sparks, now)
 }
@@ -230,7 +215,8 @@ interface WhipOverlayProps {
 
 /**
  * Body-portal overlay: binds the global pointer/keyboard listeners, runs the
- * rAF loop, and owns the cursor: none swap for the armed lifetime.
+ * rAF loop, and owns the cursor: none swap for the armed lifetime. Holding the
+ * pointer over the transcript charges the whip; releasing strikes it.
  */
 function WhipOverlay({ inputActions, pickPrompt, shouldInterrupt, cancelTurn, onDisarm }: WhipOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -240,11 +226,10 @@ function WhipOverlay({ inputActions, pickPrompt, shouldInterrupt, cancelTurn, on
     const previousCursor = document.body.style.cursor
     document.body.style.cursor = 'none'
 
-    const sim = new WhipSimulation({ handleAngle: HANDLE_ANGLE })
+    const sim = new WhipSimulation()
     sim.seed(window.innerWidth / 2, window.innerHeight / 2)
     const sparks: Spark[] = []
-    let pendingCrack = false
-    let pendingDeadline = 0
+    let struckConsumed = false
 
     const onMove = (event: PointerEvent): void => {
       sim.targetX = event.clientX
@@ -256,9 +241,13 @@ function WhipOverlay({ inputActions, pickPrompt, shouldInterrupt, cancelTurn, on
       if (!isTranscriptTarget(event.target)) return
       sim.targetX = event.clientX
       sim.targetY = event.clientY
-      sim.crackAt(event.clientX, event.clientY)
-      pendingCrack = true
-      pendingDeadline = performance.now() + CRACK_DEADLINE_MS
+      sim.charge()
+    }
+
+    const onUp = (): void => {
+      if (sim.phase !== 'charge') return
+      struckConsumed = false
+      sim.release()
     }
 
     const onKey = (event: KeyboardEvent): void => {
@@ -267,6 +256,7 @@ function WhipOverlay({ inputActions, pickPrompt, shouldInterrupt, cancelTurn, on
 
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('pointerup', onUp)
     window.addEventListener('keydown', onKey)
 
     let raf = 0
@@ -275,8 +265,8 @@ function WhipOverlay({ inputActions, pickPrompt, shouldInterrupt, cancelTurn, on
       const dt = (now - last) / 1000
       last = now
       sim.step(dt)
-      if (pendingCrack && (sim.tipSpeed > CRACK_SPEED || now > pendingDeadline)) {
-        pendingCrack = false
+      if (sim.struck && !struckConsumed) {
+        struckConsumed = true
         fireCrack(sim, sparks, now, inputActions, lastHurryRef, pickPrompt, shouldInterrupt, cancelTurn)
       }
       draw(canvasRef.current, sim, sparks, now)
@@ -288,6 +278,7 @@ function WhipOverlay({ inputActions, pickPrompt, shouldInterrupt, cancelTurn, on
       cancelAnimationFrame(raf)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('pointerup', onUp)
       window.removeEventListener('keydown', onKey)
       document.body.style.cursor = previousCursor
     }
@@ -312,7 +303,7 @@ export function WhipDock(props: WhipDockProps) {
         className={armed ? css.buttonArmed : css.button}
         data-ponytail-toggle
         aria-pressed={armed}
-        title={armed ? '鞭子已就绪：点击对话区抽鞭催促；再次点击取消' : '鞭子模式：把鼠标变成鞭子，点击对话区抽鞭催促模型'}
+        title={armed ? '鞭子已就绪：按住对话区蓄力，松开抽鞭催促；再次点击取消' : '鞭子模式：把鼠标变成鞭子，按住对话区蓄力、松开抽鞭催促模型'}
         onClick={toggle}
       >
         <span aria-hidden="true">🪢</span>
